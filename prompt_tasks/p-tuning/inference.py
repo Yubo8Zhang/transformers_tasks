@@ -32,8 +32,8 @@ from utils import convert_example, convert_logits_to_ids
 
 from verbalizer import Verbalizer
 
-device = 'cuda:1'
-model_path = 'checkpoints/predicate_generate/model_best'
+device = 'cpu'
+model_path = 'checkpoints/comment_classify/model_best'
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 model = AutoModelForMaskedLM.from_pretrained(model_path)
 model.to(device).eval()
@@ -41,7 +41,7 @@ model.to(device).eval()
 max_label_len = 6                               # 标签最大长度
 p_embedding_num = 6                             # p_token个数
 verbalizer = Verbalizer(
-        verbalizer_file='data/predicate_generate/verbalizer.txt',
+        verbalizer_file='data/comment_classify/verbalizer.txt',
         tokenizer=tokenizer,
         max_label_len=max_label_len
     )
@@ -68,9 +68,7 @@ def inference(contents: List[str]):
             return_tensor=True
         )
 
-        logits = model(
-            input_ids=tokenized_output['input_ids'].to(device),
-            token_type_ids=tokenized_output['token_type_ids'].to(device)).logits
+        logits = model(input_ids=tokenized_output['input_ids'].to(device)).logits   # 奇怪，为什么推理的时候没有prompt呢？
         
         predictions = convert_logits_to_ids(logits, tokenized_output['mask_positions']).cpu().numpy().tolist()  # (batch, label_num)
         predictions = verbalizer.batch_find_main_label(predictions)                                             # 找到子label属于的主label
