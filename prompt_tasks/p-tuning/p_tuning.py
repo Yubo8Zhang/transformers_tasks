@@ -41,7 +41,7 @@ from transformers import AutoModelForMaskedLM, AutoTokenizer, default_data_colla
 from rich import print
 from rich.table import Table
 from rich.align import Align
-from rich.console import Console
+from rich.console import Console    # 富文本模块，用来打印高可读性的log信息
 
 from iTrainingLogger import iSummaryWriter
 from class_metrics import ClassEvaluator
@@ -70,7 +70,7 @@ parser.add_argument("--max_label_len", type=int, default=6, help="max length of 
 parser.add_argument("--rdrop_coef", default=0.0, type=float, help="The coefficient of KL-Divergence loss in R-Drop paper, for more detail please refer to https://arxiv.org/abs/2106.14448), if rdrop_coef > 0 then R-Drop works")
 parser.add_argument("--img_log_dir", default='logs', type=str, help="Logging image path.")
 parser.add_argument("--img_log_name", default='Model Performance', type=str, help="Logging image file name.")
-parser.add_argument("--verbalizer", default='Verbalizer File', required=True, type=str, help="verbalizer file.")
+parser.add_argument("--verbalizer", default='Verbalizer File', required=True, type=str, help="verbalizer file.")   #这个文件是干嘛用的？
 args = parser.parse_args()
 
 writer = iSummaryWriter(log_path=args.img_log_dir, log_name=args.img_log_name)
@@ -123,7 +123,7 @@ def reset_console():
     table.add_column("value", no_wrap=True)
     
     for arg in vars(args):
-        table.add_row(arg, str(getattr(args, arg)))
+        table.add_row(arg, str(getattr(args, arg)))  # 加入(k, v)对
     
     table.caption = "You can change config in [b not dim]Source Code[/]"
     table.columns[0].style = "bright_red"
@@ -135,8 +135,8 @@ def reset_console():
 
 
 def train():
-    reset_console()
-    model = AutoModelForMaskedLM.from_pretrained(args.model)
+    reset_console()    # 重置终端并且打印args中的参数，哦耶！
+    model = AutoModelForMaskedLM.from_pretrained(args.model)  # 很奇怪哇，这里加载bert-base-chinese模型，最后更新的是什么参数？
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     verbalizer = Verbalizer(
         verbalizer_file=args.verbalizer,
@@ -153,7 +153,7 @@ def train():
                             max_label_len=args.max_label_len,
                             p_embedding_num=args.p_embedding_num
                             )
-    dataset = dataset.map(convert_func, batched=True)
+    dataset = dataset.map(convert_func, batched=True, load_from_cache_file=False)
     
     train_dataset = dataset["train"]
     eval_dataset = dataset["dev"]
@@ -170,7 +170,7 @@ def train():
             "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
             "weight_decay": 0.0,
         },
-    ]
+    ]    # 这里为什么要把模型参数分成两个组进行更新呢？
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
     model.to(args.device)
 
@@ -197,12 +197,12 @@ def train():
                 logits = model(input_ids=batch['input_ids'].to(args.device),
                                 token_type_ids=batch['token_type_ids'].to(args.device)).logits
             else:                                                                                        # 兼容不需要 token_type_id 的模型, e.g. Roberta-Base
-                logits = model(input_ids=batch['input_ids'].to(args.device)).logits
+                logits = model(input_ids=batch['input_ids'].to(args.device)).logits   # 这里forward好像就是简单的BERT的前向传播过程，那后面的backward不就是在更新BERT的参数嘛？可是这和p-tuning有什么关系呢？
             mask_labels = batch['mask_labels'].numpy().tolist()
             sub_labels = verbalizer.batch_find_sub_labels(mask_labels)
             sub_labels = [ele['token_ids'] for ele in sub_labels]
     
-            if args.rdrop_coef > 0:
+            if args.rdrop_coef > 0:  # 这条分支是在干嘛，怎么还要计算kl_loss的？
                 logits2 = model(input_ids=batch['input_ids'].to(args.device),
                             token_type_ids=batch['token_type_ids'].to(args.device)).logits
                 ce_loss = (mlm_loss(logits, batch['mask_positions'].to(args.device), sub_labels, criterion, 1.0, args.device) + \
@@ -210,7 +210,7 @@ def train():
                 kl_loss = rdrop_loss.compute_kl_loss(logits, logits2, device=args.device)
                 loss = ce_loss + kl_loss * args.rdrop_coef
             else:
-                loss = mlm_loss(logits, batch['mask_positions'].to(args.device), sub_labels, criterion, 1.0, args.device)
+                loss = mlm_loss(logits, batch['mask_positions'].to(args.device), sub_labels, criterion, 1.0, args.device)   # 计算指定位置的mask token的output与label之间的cross entropy loss。
             
             loss.backward()
             optimizer.step()
